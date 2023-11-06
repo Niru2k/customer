@@ -3,16 +3,15 @@ package driver
 import (
 	h "customer_module/helper"
 	repo "customer_module/repository"
-	"log"
-
+	"database/sql"
 	"fmt"
+	"log"
 	"os"
 
-	"github.com/jinzhu/gorm"
-	_ "github.com/jinzhu/gorm/dialects/postgres"
+	_ "github.com/lib/pq"
 )
 
-func DbConnection() *gorm.DB {
+func DbConnection() *sql.DB {
 	//Loading the .env file
 	if err := h.ConfigEnv(".env"); err != nil {
 		fmt.Println(h.Err, err)
@@ -23,7 +22,13 @@ func DbConnection() *gorm.DB {
 	password := os.Getenv(h.DbPassword)
 	dbname := os.Getenv(h.DbName)
 	connectionUrl := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname= %s sslmode=disable", host, port, user, password, dbname)
-	db, err := gorm.Open(h.Database, connectionUrl)
+	//Connecting the database
+	db, err := sql.Open("postgres", connectionUrl)
+	if err != nil {
+		panic(err)
+	}
+	//Checking the database connection
+	err = db.Ping()
 	if err != nil {
 		panic(err)
 	}

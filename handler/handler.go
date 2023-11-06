@@ -9,11 +9,13 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/jinzhu/gorm"
+	"database/sql"
+
+	_ "github.com/lib/pq"
 )
 
 type Database struct {
-	Db *gorm.DB
+	Db *sql.DB
 }
 
 // To sign-up
@@ -40,29 +42,16 @@ func (db Database) Signup(c *fiber.Ctx) error {
 		})
 	}
 	UserData.Password = string(password)
-	//Checking if the user is already exist or not
-	if _, err = r.FindUser(db.Db, UserData.Email); err != nil {
-		if gorm.IsRecordNotFoundError(err) {
-			//Creating the new user
-			if err = r.CreateUser(db.Db, UserData); err != nil {
-				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-					h.Status: fiber.StatusBadRequest,
-					h.Err:    err.Error(),
-				})
-			}
-			return c.JSON(fiber.Map{
-				h.Status: fiber.StatusOK,
-				h.Msg:    h.SignUpSuccess,
-			})
-		}
+	//Creating the new user
+	if err = r.CreateUser(db.Db, UserData); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			h.Status: fiber.StatusBadRequest,
 			h.Err:    err.Error(),
 		})
 	}
-	return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-		h.Status: fiber.StatusBadRequest,
-		h.Msg:    h.UserExt,
+	return c.JSON(fiber.Map{
+		h.Status: fiber.StatusOK,
+		h.Msg:    h.SignUpSuccess,
 	})
 }
 
@@ -90,31 +79,17 @@ func (db Database) Login(c *fiber.Ctx) error {
 			h.Err:    h.PasswordErr,
 		})
 	}
-	// Fetch a JWT token
-	if auth, err = r.ReadTokenByEmail(db.Db, user); err != nil {
-		if gorm.IsRecordNotFoundError(err) {
-			//creating the token
-			token, err := middleware.CreateToken(user, c)
-			if err != nil {
-				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-					h.Status: fiber.StatusBadRequest,
-					h.Err:    err.Error(),
-				})
-			}
-			auth.Email, auth.Token = user.Email, token
-			// Adding the token
-			if err = r.AddToken(db.Db, auth); err != nil {
-				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-					h.Status: fiber.StatusBadRequest,
-					h.Err:    err.Error(),
-				})
-			}
-			c.Status(fiber.StatusOK)
-			return c.JSON(fiber.Map{
-				h.Status: fiber.StatusOK,
-				h.Token:  auth.Token,
-			})
-		}
+	//creating the token
+	token, err := middleware.CreateToken(user, c)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			h.Status: fiber.StatusBadRequest,
+			h.Err:    err.Error(),
+		})
+	}
+	auth.Email, auth.Token, auth.UserId = user.Email, token, user.CustomerId
+	// Adding the token
+	if err = r.AddToken(db.Db, auth); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			h.Status: fiber.StatusBadRequest,
 			h.Err:    err.Error(),
@@ -129,7 +104,7 @@ func (db Database) Login(c *fiber.Ctx) error {
 // To Get customer
 func (db Database) GetCustomer(c *fiber.Ctx) error {
 	tokenClaims := middleware.GetTokenClaims(c)
-	customerData, err := r.FindUser(db.Db, tokenClaims.Id)
+	customerData, err := r.FindUser(db.Db, tokenClaims.Subject)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			h.Status: fiber.StatusBadRequest,
